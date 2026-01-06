@@ -1,0 +1,20 @@
+# node
+node_modules/
+**/node_modules/
+
+# env
+.env
+.env.local
+
+# firebase
+.firebase/
+firestore-debug.log
+ui-debug.log
+firebase-debug.log
+
+# build
+lib/
+dist/
+
+# misc
+.DS_Store
