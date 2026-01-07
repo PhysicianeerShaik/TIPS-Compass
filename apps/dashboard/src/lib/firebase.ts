@@ -8,13 +8,6 @@ import {
   Firestore,
   initializeFirestore,
 } from "firebase/firestore";
-import {
-  getAuth,
-  setPersistence,
-  browserLocalPersistence,
-  signInAnonymously,
-  type Auth,
-} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
@@ -30,9 +23,6 @@ declare global {
   var __FIREBASE_APP__: ReturnType<typeof getApp> | undefined;
   var __FIRESTORE__: Firestore | undefined;
   var __FIRESTORE_EMU_CONNECTED__: boolean | undefined;
-  var __FIREBASE_AUTH__: Auth | undefined;
-  var __FIREBASE_AUTH_READY__: Promise<void> | undefined;
-  var __FIREBASE_AUTH_PERSISTENCE_SET__: boolean | undefined;
 }
 
 function getAppInstance() {
@@ -47,32 +37,6 @@ function getAppInstance() {
   }
 
   return globalThis.__FIREBASE_APP__;
-}
-
-function getAuthInstance() {
-  const app = getAppInstance();
-  if (!globalThis.__FIREBASE_AUTH__) {
-    globalThis.__FIREBASE_AUTH__ = getAuth(app);
-  }
-  return globalThis.__FIREBASE_AUTH__;
-}
-
-export async function ensureAuth() {
-  const auth = getAuthInstance();
-  if (auth.currentUser) return;
-  if (!globalThis.__FIREBASE_AUTH_READY__) {
-    globalThis.__FIREBASE_AUTH_READY__ = (async () => {
-      if (!globalThis.__FIREBASE_AUTH_PERSISTENCE_SET__) {
-        try {
-          await setPersistence(auth, browserLocalPersistence);
-        } finally {
-          globalThis.__FIREBASE_AUTH_PERSISTENCE_SET__ = true;
-        }
-      }
-      await signInAnonymously(auth);
-    })();
-  }
-  await globalThis.__FIREBASE_AUTH_READY__;
 }
 
 export function getDb(): Firestore {
@@ -101,7 +65,5 @@ export function getDb(): Firestore {
 }
 
 export async function getAuthedDb(): Promise<Firestore> {
-  const db = getDb();
-  await ensureAuth();
-  return db;
+  return getDb();
 }
