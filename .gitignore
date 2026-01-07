@@ -16,5 +16,9 @@ firebase-debug.log
 lib/
 dist/
 
+# allow dashboard source lib
+!apps/dashboard/src/lib/
+!apps/dashboard/src/lib/**
+
 # misc
 .DS_Store
