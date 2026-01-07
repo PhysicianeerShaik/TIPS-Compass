@@ -1,5 +1,7 @@
 {
-  "installCommand": "if [ -d apps/dashboard ]; then cd apps/dashboard && npm install; else npm install; fi",
-  "buildCommand": "if [ -d apps/dashboard ]; then cd apps/dashboard && npm run build; else npm run build; fi",
-  "framework": "nextjs"
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "rootDirectory": "apps/dashboard"
 }
