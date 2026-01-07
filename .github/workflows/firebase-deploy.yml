@@ -1,0 +1,43 @@
+name: Firebase Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - "firestore.rules"
+      - "firebase.json"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Write service account key
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TIPS_COMPASS }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "Missing FIREBASE_SERVICE_ACCOUNT_TIPS_COMPASS secret."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "${{ runner.temp }}/firebase-key.json"
+
+      - name: Install functions deps
+        run: npm install
+        working-directory: functions
+
+      - name: Deploy Functions + Firestore Rules
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-key.json
+          GOOGLE_CLOUD_PROJECT: tips-compass
+          GCLOUD_PROJECT: tips-compass
+        run: |
+          npx firebase-tools@latest deploy --only functions,firestore:rules --project tips-compass

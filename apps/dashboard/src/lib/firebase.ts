@@ -9,9 +9,13 @@ import {
 } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "demo",
-  authDomain: "demo",
-  projectId: "demo-no-project",
+  apiKey: "AIzaSyBw3cNHg_v84YvK-So2W2ukT13uPsKC2Bc",
+  authDomain: "tips-compass.firebaseapp.com",
+  projectId: "tips-compass",
+  storageBucket: "tips-compass.firebasestorage.app",
+  messagingSenderId: "22185905608",
+  appId: "1:22185905608:web:6ddb6f0811e5e119d844fd",
+  measurementId: "G-Y428WFFY89",
 };
 
 declare global {
