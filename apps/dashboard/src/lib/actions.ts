@@ -1,10 +1,11 @@
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getAuthedDb } from "@/lib/firebase";
 import type { ClinicianAction } from "@/lib/types";
 
 export async function createAction(input: Omit<ClinicianAction, "id" | "createdAt" | "status"> & { status?: "open" | "done" }) {
   const { patientId, ...rest } = input;
 
+  const db = await getAuthedDb();
   const ref = collection(db, "patients", patientId, "actions");
   const payload = {
     patientId,
@@ -18,6 +19,7 @@ export async function createAction(input: Omit<ClinicianAction, "id" | "createdA
 }
 
 export async function markActionDone(patientId: string, actionId: string) {
+  const db = await getAuthedDb();
   const ref = doc(db, "patients", patientId, "actions", actionId);
   await updateDoc(ref, { status: "done" });
 }

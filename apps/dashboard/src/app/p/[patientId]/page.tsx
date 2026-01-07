@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
-import { getDb } from "@/lib/firebase";
+import { getAuthedDb } from "@/lib/firebase";
 import { Card } from "@/components/Card";
 import { RiskBadge } from "@/components/Badge";
 import type { RiskLevel, RiskState, ClinicianAction, ActionType, ActionSeverity } from "@/lib/types";
@@ -96,6 +96,245 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
+function DetailedChart({
+  label,
+  unit,
+  dates,
+  values,
+  formatValue,
+}: {
+  label: string;
+  unit?: string;
+  dates: string[];
+  values: Array<number | null>;
+  formatValue: (v: number | null) => string;
+}) {
+  const width = 720;
+  const height = 340;
+  const padX = 56;
+  const padY = 44;
+  const gridRows = 5;
+
+  const numeric = values.filter((v): v is number => typeof v === "number");
+  const hasData = numeric.length > 1;
+  const min = hasData ? Math.min(...numeric) : 0;
+  const max = hasData ? Math.max(...numeric) : 1;
+  const avg = numeric.length > 0 ? numeric.reduce((a, b) => a + b, 0) / numeric.length : null;
+
+  const segments = useMemo(() => {
+    if (!hasData) return [];
+    const segs: string[] = [];
+    let current: string[] = [];
+
+    values.forEach((v, i) => {
+      if (typeof v !== "number") {
+        if (current.length >= 2) segs.push(current.join(" "));
+        current = [];
+        return;
+      }
+      const x =
+        (i / Math.max(1, values.length - 1)) * (width - padX * 2) + padX;
+      const y =
+        height -
+        padY -
+        ((v - min) / Math.max(1, max - min)) * (height - padY * 2);
+      current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    });
+
+    if (current.length >= 2) segs.push(current.join(" "));
+    return segs;
+  }, [hasData, values, width, height, padX, padY, min, max]);
+
+  const gridLines = useMemo(() => {
+    if (!hasData) return [];
+    return Array.from({ length: gridRows + 1 }, (_, i) => {
+      const y = height - padY - (i / gridRows) * (height - padY * 2);
+      const val = min + (i / gridRows) * (max - min);
+      return { y, val };
+    });
+  }, [hasData, gridRows, height, padY, min, max]);
+
+  const exportCsv = () => {
+    const rows = [["date", label.toLowerCase().replace(/\s+/g, "_")]];
+    dates.forEach((d, i) => {
+      const v = values[i];
+      rows.push([d, v == null ? "" : String(v)]);
+    });
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${label.toLowerCase().replace(/\s+/g, "_")}_trend.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-[#0b1424] p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-[0.3em] text-white/50">
+            {label}
+          </div>
+          <div className="mt-2 text-lg font-semibold">
+            Trend over time{unit ? ` (${unit})` : ""}
+          </div>
+          <div className="mt-1 text-xs text-white/50">
+            Average:{" "}
+            <span className="text-white/80">
+              {avg == null ? "—" : formatValue(Number(avg.toFixed(2)))}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={exportCsv}
+          className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-white/70 hover:bg-white/15"
+        >
+          Export CSV
+        </button>
+      </div>
+      <div className="mt-4 pb-6">
+        {!hasData ? (
+          <div className="py-6 text-sm text-white/50">Not enough data yet.</div>
+        ) : (
+          <svg
+            width="100%"
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            className="text-white"
+            preserveAspectRatio="none"
+            style={{ overflow: "visible" }}
+          >
+            <rect x="0" y="0" width={width} height={height} fill="#0b1424" />
+            {gridLines.map((g, idx) => (
+              <g key={`grid-${idx}`}>
+                <line
+                  x1={padX}
+                  y1={g.y}
+                  x2={width - padX}
+                  y2={g.y}
+                  stroke="#1e2a3f"
+                  strokeWidth="1"
+                />
+                <text
+                  x={8}
+                  y={g.y + 4}
+                  fontSize="10"
+                  fill="#c8d3ea"
+                >
+                  {g.val.toFixed(1)}
+                </text>
+              </g>
+            ))}
+            <line
+              x1={padX}
+              y1={padY}
+              x2={padX}
+              y2={height - padY}
+              stroke="#c8d3ea"
+              strokeWidth="1.5"
+            />
+            <line
+              x1={padX}
+              y1={height - padY}
+              x2={width - padX}
+              y2={height - padY}
+              stroke="#c8d3ea"
+              strokeWidth="1.5"
+            />
+            {segments.map((points, idx) => (
+              <polyline
+                key={`${label}-seg-${idx}`}
+                fill="none"
+                stroke="#f8f9ff"
+                strokeWidth="2.5"
+                points={points}
+              />
+            ))}
+            {dates.map((d, i) => {
+              const maxLabels = 10;
+              const step = Math.max(1, Math.ceil(dates.length / maxLabels));
+              if (i % step !== 0 && i !== dates.length - 1) return null;
+              const x =
+                (i / Math.max(1, dates.length - 1)) * (width - padX * 2) + padX;
+              return (
+                <text
+                  key={`x-${d}-${i}`}
+                  x={x}
+                  y={height - 8}
+                  fontSize="11"
+                  textAnchor="end"
+                  fill="#c8d3ea"
+                  transform={`rotate(-25 ${x} ${height - 8})`}
+                >
+                  {d}
+                </text>
+              );
+            })}
+          </svg>
+        )}
+      </div>
+      <div className="mt-3 flex items-center justify-between text-xs text-white/40">
+        <span>{dates[0] ?? "—"}</span>
+        <span>{dates[dates.length - 1] ?? "—"}</span>
+      </div>
+      <div className="mt-5 max-h-48 overflow-auto rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs text-white/70">
+        <div className="grid grid-cols-2 gap-2">
+          {dates.map((d, i) => (
+            <div key={`${label}-${d}-${i}`} className="flex items-center justify-between gap-3">
+              <span className="text-white/50">{d}</span>
+              <span className="text-white/80">{formatValue(values[i] ?? null)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  values,
+  unit,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  values: number[];
+  unit?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <Card>
+      <button
+        type="button"
+        onClick={onClick}
+        className="group w-full text-left"
+        aria-label={`Open ${label} trend`}
+      >
+        <div className="text-sm text-white/50">{label}</div>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="text-2xl font-semibold">
+            {value}
+            {unit ? <span className="text-xs text-white/50"> {unit}</span> : null}
+          </div>
+          <div className="text-white/60">
+            <Sparkline values={values} />
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-white/40 group-hover:text-white/60">
+          Tap for full trend
+        </div>
+      </button>
+    </Card>
+  );
+}
+
 export default function PatientPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const router = useRouter();
@@ -104,69 +343,213 @@ export default function PatientPage() {
   const [checkins, setCheckins] = useState<CheckIn[]>([]);
   const [actions, setActions] = useState<ClinicianAction[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [activeMetricId, setActiveMetricId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!patientId) return;
-    const db = getDb();
+    let unsubRisk = () => {};
+    let unsubCheckins = () => {};
+    let unsubActions = () => {};
+    let active = true;
 
-    // riskState
-    const riskRef = doc(db, "riskStates", patientId);
-    const unsubRisk = onSnapshot(
-      riskRef,
-      (snap) => setRisk(snap.exists() ? (snap.data() as RiskState) : null),
-      (e) => setErr(String(e))
-    );
+    (async () => {
+      try {
+        const db = await getAuthedDb();
+        if (!active) return;
+        // riskState
+        const riskRef = doc(db, "riskStates", patientId);
+        unsubRisk = onSnapshot(
+          riskRef,
+          (snap) => setRisk(snap.exists() ? (snap.data() as RiskState) : null),
+          (e) => setErr(String(e))
+        );
 
-    // checkins
-    const cRef = collection(db, "checkins");
-    const cQuery = query(
-      cRef,
-      where("patientId", "==", patientId),
-      orderBy("date", "desc"),
-      limit(30)
-    );
+        // checkins
+        const cRef = collection(db, "checkins");
+        const cQuery = query(
+          cRef,
+          where("patientId", "==", patientId),
+          orderBy("date", "desc"),
+          limit(30)
+        );
 
-    const unsubCheckins = onSnapshot(
-      cQuery,
-      (snap) => setCheckins(snap.docs.map((d) => d.data() as CheckIn)),
-      (e) => setErr(String(e))
-    );
+        unsubCheckins = onSnapshot(
+          cQuery,
+          (snap) => setCheckins(snap.docs.map((d) => d.data() as CheckIn)),
+          (e) => setErr(String(e))
+        );
 
-    // clinician actions (Step 4)
-    const aRef = collection(db, "clinicianActions");
-    const aQuery = query(
-      aRef,
-      where("patientId", "==", patientId),
-      orderBy("createdAt", "desc"),
-      limit(50)
-    );
+        // clinician actions (Step 4)
+        const aRef = collection(db, "clinicianActions");
+        const aQuery = query(
+          aRef,
+          where("patientId", "==", patientId),
+          orderBy("createdAt", "desc"),
+          limit(50)
+        );
 
-    const unsubActions = onSnapshot(
-      aQuery,
-      (snap) =>
-        setActions(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as ClinicianAction) }))
-        ),
-      (e) => setErr(String(e))
-    );
+        unsubActions = onSnapshot(
+          aQuery,
+          (snap) =>
+            setActions(
+              snap.docs.map((d) => ({ id: d.id, ...(d.data() as ClinicianAction) }))
+            ),
+          (e) => setErr(String(e))
+        );
+      } catch (e: any) {
+        setErr(String(e?.message ?? e));
+      }
+    })();
 
     return () => {
+      active = false;
       unsubRisk();
       unsubCheckins();
       unsubActions();
     };
   }, [patientId]);
 
-  const weightSeries = useMemo(() => {
-    const vals = checkins
-      .slice()
-      .reverse()
-      .map((c) => c.weightKg)
-      .filter((w): w is number => typeof w === "number");
-    return vals;
-  }, [checkins]);
+  const orderedCheckins = useMemo(() => checkins.slice().reverse(), [checkins]);
+  const dates = useMemo(() => orderedCheckins.map((c) => c.date), [orderedCheckins]);
+  const weightValues = useMemo(
+    () => orderedCheckins.map((c) => (typeof c.weightKg === "number" ? c.weightKg : null)),
+    [orderedCheckins]
+  );
+  const weightSeries = useMemo(
+    () => weightValues.filter((w): w is number => typeof w === "number"),
+    [weightValues]
+  );
+  const bowelValues = useMemo(() => orderedCheckins.map((c) => c.bowelMovements), [orderedCheckins]);
+  const medsValues = useMemo(() => {
+    return orderedCheckins.map((c) => {
+      const meds = c.medsTaken ?? {};
+      return [meds.lactulose, meds.rifaximin, meds.diuretics].filter((x) => x === true).length;
+    });
+  }, [orderedCheckins]);
+  const confusionValues = useMemo(
+    () => orderedCheckins.map((c) => (c.confusion ? 1 : 0)),
+    [orderedCheckins]
+  );
+  const sleepValues = useMemo(
+    () => orderedCheckins.map((c) => (c.sleepReversal ? 1 : 0)),
+    [orderedCheckins]
+  );
+  const tremorValues = useMemo(
+    () => orderedCheckins.map((c) => (c.tremor ? 1 : 0)),
+    [orderedCheckins]
+  );
+  const feverValues = useMemo(
+    () => orderedCheckins.map((c) => (c.fever ? 1 : 0)),
+    [orderedCheckins]
+  );
+  const bleedingValues = useMemo(
+    () => orderedCheckins.map((c) => (c.bleeding ? 1 : 0)),
+    [orderedCheckins]
+  );
 
   const latest = checkins[0] ?? null;
+  const metricItems = useMemo(() => {
+    const latestMeds =
+      latest == null
+        ? null
+        : [latest.medsTaken?.lactulose, latest.medsTaken?.rifaximin, latest.medsTaken?.diuretics].filter(
+            (x) => x === true
+          ).length;
+
+    return [
+      {
+        id: "weight",
+        label: "Weight",
+        unit: "kg",
+        dates,
+        values: weightValues,
+        sparkValues: weightSeries,
+        latestLabel: latest?.weightKg != null ? latest.weightKg.toFixed(1) : "—",
+        formatValue: (v: number | null) => (typeof v === "number" ? `${v.toFixed(1)} kg` : "—"),
+      },
+      {
+        id: "bowel",
+        label: "Bowel movements",
+        dates,
+        values: bowelValues,
+        sparkValues: bowelValues,
+        latestLabel: latest ? String(latest.bowelMovements) : "—",
+        formatValue: (v: number | null) => (typeof v === "number" ? String(v) : "—"),
+      },
+      {
+        id: "meds",
+        label: "Meds adherence",
+        unit: "/3",
+        dates,
+        values: medsValues,
+        sparkValues: medsValues,
+        latestLabel: latestMeds == null ? "—" : String(latestMeds),
+        formatValue: (v: number | null) => (typeof v === "number" ? `${v}/3` : "—"),
+      },
+      {
+        id: "confusion",
+        label: "Confusion",
+        dates,
+        values: confusionValues,
+        sparkValues: confusionValues,
+        latestLabel: latest ? fmtBool(latest.confusion) : "—",
+        formatValue: (v: number | null) => (v === 1 ? "Yes" : v === 0 ? "No" : "—"),
+      },
+      {
+        id: "sleep",
+        label: "Sleep reversal",
+        dates,
+        values: sleepValues,
+        sparkValues: sleepValues,
+        latestLabel: latest ? fmtBool(latest.sleepReversal) : "—",
+        formatValue: (v: number | null) => (v === 1 ? "Yes" : v === 0 ? "No" : "—"),
+      },
+      {
+        id: "tremor",
+        label: "Tremor",
+        dates,
+        values: tremorValues,
+        sparkValues: tremorValues,
+        latestLabel: latest ? fmtBool(latest.tremor) : "—",
+        formatValue: (v: number | null) => (v === 1 ? "Yes" : v === 0 ? "No" : "—"),
+      },
+      {
+        id: "fever",
+        label: "Fever",
+        dates,
+        values: feverValues,
+        sparkValues: feverValues,
+        latestLabel: latest ? fmtBool(latest.fever) : "—",
+        formatValue: (v: number | null) => (v === 1 ? "Yes" : v === 0 ? "No" : "—"),
+      },
+      {
+        id: "bleeding",
+        label: "Bleeding",
+        dates,
+        values: bleedingValues,
+        sparkValues: bleedingValues,
+        latestLabel: latest ? fmtBool(latest.bleeding) : "—",
+        formatValue: (v: number | null) => (v === 1 ? "Yes" : v === 0 ? "No" : "—"),
+      },
+    ];
+  }, [
+    dates,
+    latest,
+    weightValues,
+    weightSeries,
+    bowelValues,
+    medsValues,
+    confusionValues,
+    sleepValues,
+    tremorValues,
+    feverValues,
+    bleedingValues,
+  ]);
+  const metricById = useMemo(
+    () => new Map(metricItems.map((m) => [m.id, m])),
+    [metricItems]
+  );
+  const activeMetric = activeMetricId ? metricById.get(activeMetricId) ?? null : null;
   const summary = useMemo(
     () => buildPatientSummary(patientId ?? "patient", risk, checkins),
     [patientId, risk, checkins]
@@ -174,7 +557,7 @@ export default function PatientPage() {
 
   async function createQuickAction(type: ActionType) {
     if (!patientId) return;
-    const db = getDb();
+    const db = await getAuthedDb();
 
     const urgent: ActionType[] = ["ed_referral"];
     const severity: ActionSeverity = urgent.includes(type) ? "urgent" : "routine";
@@ -199,7 +582,7 @@ export default function PatientPage() {
 
   async function toggleActionDone(a: ClinicianAction) {
     if (!a.id) return;
-    const db = getDb();
+    const db = await getAuthedDb();
     const ref = doc(db, "clinicianActions", a.id);
     await updateDoc(ref, { status: a.status === "done" ? "open" : "done" });
   }
@@ -423,66 +806,48 @@ export default function PatientPage() {
           </Card>
 
           {/* Trend cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <div className="text-sm text-white/50">Weight trend</div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <div className="text-2xl font-semibold">
-                  {latest?.weightKg != null ? `${latest.weightKg.toFixed(1)} kg` : "—"}
-                </div>
-                <div className="text-white/60">
-                  <Sparkline values={weightSeries} />
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-white/40">
-                Last 30 check-ins (numeric weights only)
-              </div>
-            </Card>
-
-            <Card>
-              <div className="text-sm text-white/50">HE signals (latest)</div>
-              <div className="mt-2 text-sm text-white/80 space-y-1">
-                <div>
-                  Confusion:{" "}
-                  <span className="text-white/95">{latest ? fmtBool(latest.confusion) : "—"}</span>
-                </div>
-                <div>
-                  Sleep reversal:{" "}
-                  <span className="text-white/95">
-                    {latest ? fmtBool(latest.sleepReversal) : "—"}
-                  </span>
-                </div>
-                <div>
-                  Tremor:{" "}
-                  <span className="text-white/95">{latest ? fmtBool(latest.tremor) : "—"}</span>
-                </div>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="text-sm text-white/50">Meds adherence (latest)</div>
-              <div className="mt-2 text-sm text-white/80 space-y-1">
-                <div>
-                  Lactulose:{" "}
-                  <span className="text-white/95">
-                    {latest ? fmtBool(latest.medsTaken?.lactulose) : "—"}
-                  </span>
-                </div>
-                <div>
-                  Rifaximin:{" "}
-                  <span className="text-white/95">
-                    {latest ? fmtBool(latest.medsTaken?.rifaximin) : "—"}
-                  </span>
-                </div>
-                <div>
-                  Diuretics:{" "}
-                  <span className="text-white/95">
-                    {latest ? fmtBool(latest.medsTaken?.diuretics) : "—"}
-                  </span>
-                </div>
-              </div>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {metricItems.map((m) => (
+              <MetricCard
+                key={m.id}
+                label={m.label}
+                value={m.latestLabel}
+                unit={m.unit}
+                values={m.sparkValues}
+                onClick={() => setActiveMetricId(m.id)}
+              />
+            ))}
           </div>
+
+          {activeMetric ? (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
+              onClick={() => setActiveMetricId(null)}
+            >
+              <div
+                className="w-full max-w-4xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-sm text-white/60">Metric detail</div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveMetricId(null)}
+                    className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-white/70 hover:bg-white/15"
+                  >
+                    Close
+                  </button>
+                </div>
+                <DetailedChart
+                  label={activeMetric.label}
+                  unit={activeMetric.unit}
+                  dates={activeMetric.dates}
+                  values={activeMetric.values}
+                  formatValue={activeMetric.formatValue}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {/* Timeline */}
           <Card>

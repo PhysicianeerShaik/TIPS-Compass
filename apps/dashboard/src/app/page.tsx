@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import Link from "next/link";
 
-import { getDb } from "@/lib/firebase";
-import { seedDemo } from "@/lib/demoSeed";
+import { getAuthedDb } from "@/lib/firebase";
+import { clearDemoData, seedDemo } from "@/lib/demoSeed";
+import { evaluateRisk, type CheckInInput } from "@/lib/risk";
 
 import type { RiskLevel, RiskState } from "@/lib/types";
 import { buildAlertFeed, buildDashboardSummary } from "@/lib/insights";
@@ -14,6 +15,7 @@ import { Card } from "@/components/Card";
 import { RiskBadge } from "@/components/Badge";
 import { Segmented } from "@/components/Segmented";
 import { ToastStack, type ToastItem } from "@/components/ToastStack";
+import { GlobalFooter } from "@/components/GlobalFooter";
 
 type Filter = "all" | RiskLevel;
 
@@ -21,29 +23,114 @@ function levelRank(l: RiskLevel) {
   return l === "red" ? 0 : l === "yellow" ? 1 : 2;
 }
 
+function TrendChart({
+  dates,
+  red,
+  yellow,
+  green,
+}: {
+  dates: string[];
+  red: number[];
+  yellow: number[];
+  green: number[];
+}) {
+  const width = 420;
+  const height = 140;
+  const pad = 10;
+
+  const maxVal = Math.max(1, ...red, ...yellow, ...green);
+  const toPoints = (values: number[]) => {
+    if (values.length < 2) return "";
+    return values
+      .map((v, i) => {
+        const x = (i / (values.length - 1)) * (width - pad * 2) + pad;
+        const y = height - pad - (v / maxVal) * (height - pad * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  };
+
+  const redPts = toPoints(red);
+  const yellowPts = toPoints(yellow);
+  const greenPts = toPoints(green);
+
+  return (
+    <div className="w-full">
+      <svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="text-white/80"
+        preserveAspectRatio="none"
+      >
+        <polyline fill="none" stroke="rgba(248,113,113,0.9)" strokeWidth="2.5" points={redPts} />
+        <polyline fill="none" stroke="rgba(251,191,36,0.9)" strokeWidth="2.5" points={yellowPts} />
+        <polyline fill="none" stroke="rgba(74,222,128,0.9)" strokeWidth="2.5" points={greenPts} />
+      </svg>
+      <div className="mt-2 flex items-center justify-between text-[11px] text-white/40">
+        <span>{dates[0] ?? "—"}</span>
+        <span>{dates[dates.length - 1] ?? "—"}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [items, setItems] = useState<RiskState[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [qText, setQText] = useState("");
+  const [checkins, setCheckins] = useState<CheckInInput[]>([]);
+  const [demoEnabled, setDemoEnabled] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
 
   useEffect(() => {
-    const db = getDb();
-    const ref = collection(db, "riskStates");
-    const qy = query(ref, orderBy("lastCheckInDate", "desc"));
+    let unsubRisk = () => {};
+    let unsubCheckins = () => {};
+    let active = true;
 
-    return onSnapshot(qy, (snap) => {
-      const rows = snap.docs.map((d) => d.data() as RiskState);
+    (async () => {
+      try {
+        const db = await getAuthedDb();
+        if (!active) return;
+        const ref = collection(db, "riskStates");
+        const qy = query(ref, orderBy("lastCheckInDate", "desc"));
 
-      // Stable triage ordering: red → yellow → green, then newest check-in
-      rows.sort((a, b) => {
-        const ra = levelRank(a.level);
-        const rb = levelRank(b.level);
-        if (ra !== rb) return ra - rb;
-        return (b.lastCheckInDate ?? "").localeCompare(a.lastCheckInDate ?? "");
-      });
+        unsubRisk = onSnapshot(qy, (snap) => {
+          const rows = snap.docs.map((d) => d.data() as RiskState);
 
-      setItems(rows);
-    });
+          // Stable triage ordering: red → yellow → green, then newest check-in
+          rows.sort((a, b) => {
+            const ra = levelRank(a.level);
+            const rb = levelRank(b.level);
+            if (ra !== rb) return ra - rb;
+            return (b.lastCheckInDate ?? "").localeCompare(a.lastCheckInDate ?? "");
+          });
+
+          setItems(rows);
+        });
+
+        const checkinsRef = collection(db, "checkins");
+        const checkinsQuery = query(checkinsRef, orderBy("date", "asc"), limit(500));
+        unsubCheckins = onSnapshot(checkinsQuery, (snap) => {
+          setCheckins(snap.docs.map((d) => d.data() as CheckInInput));
+        });
+      } catch (err) {
+        console.error("Firestore init failed", err);
+      }
+    })();
+
+    return () => {
+      active = false;
+      unsubRisk();
+      unsubCheckins();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("tips_compass_demo_enabled");
+    if (stored === "true") setDemoEnabled(true);
   }, []);
 
   const filtered = useMemo(() => {
@@ -64,6 +151,44 @@ export default function Dashboard() {
     return c;
   }, [items]);
   const totalCount = counts.red + counts.yellow + counts.green;
+
+  const trend = useMemo(() => {
+    const byPatient = new Map<string, CheckInInput[]>();
+    for (const c of checkins) {
+      if (!c.patientId || !c.date) continue;
+      if (!byPatient.has(c.patientId)) byPatient.set(c.patientId, []);
+      byPatient.get(c.patientId)!.push(c);
+    }
+
+    const dayCounts = new Map<string, { red: number; yellow: number; green: number }>();
+
+    for (const [, list] of byPatient) {
+      const ordered = list.slice().sort((a, b) => a.date.localeCompare(b.date));
+      let weightHistory: { date: string; weightKg: number }[] = [];
+
+      for (const c of ordered) {
+        const nextHistory =
+          typeof c.weightKg === "number"
+            ? [...weightHistory, { date: c.date, weightKg: c.weightKg }]
+            : weightHistory;
+        const window = nextHistory.slice(-4);
+        const { level } = evaluateRisk(c, window);
+        if (!dayCounts.has(c.date)) {
+          dayCounts.set(c.date, { red: 0, yellow: 0, green: 0 });
+        }
+        dayCounts.get(c.date)![level]++;
+        weightHistory = nextHistory;
+      }
+    }
+
+    const dates = Array.from(dayCounts.keys()).sort();
+    return {
+      dates,
+      red: dates.map((d) => dayCounts.get(d)!.red),
+      yellow: dates.map((d) => dayCounts.get(d)!.yellow),
+      green: dates.map((d) => dayCounts.get(d)!.green),
+    };
+  }, [checkins]);
 
   const alerts = useMemo(() => buildAlertFeed(items), [items]);
   const summary = useMemo(() => buildDashboardSummary(items), [items]);
@@ -134,6 +259,40 @@ export default function Dashboard() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const toggleDemo = async () => {
+    if (demoBusy) return;
+    setDemoError(null);
+
+    if (!demoEnabled) {
+      setDemoBusy(true);
+      try {
+        await seedDemo();
+        setDemoEnabled(true);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("tips_compass_demo_enabled", "true");
+        }
+      } catch (e: any) {
+        setDemoError(String(e?.message ?? e));
+      } finally {
+        setDemoBusy(false);
+      }
+      return;
+    }
+
+    setDemoBusy(true);
+    try {
+      await clearDemoData();
+      setDemoEnabled(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("tips_compass_demo_enabled", "false");
+      }
+    } catch (e: any) {
+      setDemoError(String(e?.message ?? e));
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
   return (
     <main className="min-h-screen text-white">
       <div className="mx-auto max-w-6xl px-6 py-12">
@@ -154,12 +313,29 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end gap-2">
                 <button
-                  onClick={seedDemo}
-                  className="rounded-full border border-white/10 bg-white/10 px-5 py-2.5 text-sm text-white/90 shadow-[0_12px_28px_rgba(5,10,25,0.4)] hover:bg-white/15"
+                  onClick={toggleDemo}
+                  disabled={demoBusy}
+                  className={`flex items-center gap-3 rounded-full border px-5 py-2.5 text-sm shadow-[0_12px_28px_rgba(5,10,25,0.4)] transition ${
+                    demoEnabled
+                      ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
+                      : "border-white/10 bg-white/10 text-white/90 hover:bg-white/15"
+                  } ${demoBusy ? "opacity-60" : ""}`}
                 >
-                  Run demo scenario
+                  <span className="text-[11px] uppercase tracking-[0.25em]">
+                    Demo mode
+                  </span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      demoEnabled
+                        ? "bg-emerald-400/30 text-emerald-100"
+                        : "bg-white/15 text-white/70"
+                    }`}
+                  >
+                    {demoEnabled ? "On" : "Off"}
+                  </span>
+                  {demoBusy ? <span className="text-xs text-white/60">Seeding…</span> : null}
                 </button>
 
                 <Link
@@ -168,6 +344,11 @@ export default function Dashboard() {
                 >
                   Patient Check-In →
                 </Link>
+                {demoError ? (
+                  <div className="text-xs text-red-300">
+                    {demoError}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -243,6 +424,48 @@ export default function Dashboard() {
               <div className="mt-1 text-xs text-white/50">Stable</div>
             </Card>
           </div>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.3em] text-white/50">
+                  Risk trend
+                </div>
+                <div className="mt-2 text-lg font-semibold">Daily triage over time</div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-white/50">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-rose-400" />
+                  Red
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-amber-300" />
+                  Yellow
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                  Green
+                </span>
+              </div>
+            </div>
+            <div className="mt-4">
+              {trend.dates.length === 0 ? (
+                <div className="py-6 text-sm text-white/50">
+                  No trend data yet. Submit check-ins to populate the timeline.
+                </div>
+              ) : (
+                <TrendChart
+                  dates={trend.dates}
+                  red={trend.red}
+                  yellow={trend.yellow}
+                  green={trend.green}
+                />
+              )}
+            </div>
+            <div className="mt-3 text-xs text-white/40">
+              Based on all recorded check-ins across patients.
+            </div>
+          </Card>
 
           {/* Next-gen insights */}
           <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_0.9fr]">
@@ -403,6 +626,8 @@ export default function Dashboard() {
               )}
             </div>
           </Card>
+
+          <GlobalFooter />
         </div>
       </div>
       <ToastStack toasts={showToasts ? toasts : []} onDismiss={dismissToast} />

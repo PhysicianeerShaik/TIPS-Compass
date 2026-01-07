@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-import { getDb } from "@/lib/firebase";
+import { getAuthedDb } from "@/lib/firebase";
 import type { ClinicianAction, ActionType, ActionSeverity } from "@/lib/types";
 import { createAction, markActionDone } from "@/lib/actions";
 
@@ -27,13 +27,28 @@ export function ActionsPanel({ patientId }: { patientId: string }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const db = getDb();
-    const ref = collection(db, "patients", patientId, "actions");
-    const qy = query(ref, orderBy("createdAt", "desc"));
-    return onSnapshot(qy, (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ClinicianAction[];
-      setItems(rows);
-    });
+    let unsub = () => {};
+    let active = true;
+
+    (async () => {
+      try {
+        const db = await getAuthedDb();
+        if (!active) return;
+        const ref = collection(db, "patients", patientId, "actions");
+        const qy = query(ref, orderBy("createdAt", "desc"));
+        unsub = onSnapshot(qy, (snap) => {
+          const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ClinicianAction[];
+          setItems(rows);
+        });
+      } catch (err) {
+        console.error("ActionsPanel Firestore init failed", err);
+      }
+    })();
+
+    return () => {
+      active = false;
+      unsub();
+    };
   }, [patientId]);
 
   const openItems = useMemo(() => items.filter((x) => (x.status ?? "open") === "open"), [items]);

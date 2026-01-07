@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getDb } from "@/lib/firebase";
+import { getAuthedDb } from "@/lib/firebase";
 import { Card } from "@/components/Card";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/localDraft";
 import { nowLocalTimeString, todayYYYYMMDD } from "@/lib/format";
+import { upsertRiskStateFromCheckin } from "@/lib/risk";
+import { GlobalFooter } from "@/components/GlobalFooter";
 
 type CheckIn = {
   patientId: string;
@@ -223,7 +225,7 @@ export default function CheckInPage() {
 
     setStatus({ state: "saving" });
     try {
-      const db = getDb();
+      const db = await getAuthedDb();
       const ref = doc(db, "checkins", checkinId);
 
       await setDoc(
@@ -238,6 +240,7 @@ export default function CheckInPage() {
         },
         { merge: true }
       );
+      await upsertRiskStateFromCheckin(db, form);
 
       clearDraft(DRAFT_KEY);
 
@@ -597,6 +600,30 @@ export default function CheckInPage() {
           <div className="pt-2 text-xs text-white/30">
             If you have severe symptoms (heavy bleeding, fainting, severe confusion), call emergency services.
           </div>
+
+          <div className="mt-10 rounded-[28px] border border-red-300/30 bg-red-500/10 p-6">
+            <details className="group">
+              <summary className="flex cursor-pointer items-center justify-between text-sm font-semibold text-red-200">
+                <span>Urgent TIPS warning signs — seek immediate care</span>
+                <span className="text-red-200/70 transition group-open:rotate-180">▼</span>
+              </summary>
+              <div className="mt-4 text-sm text-red-100/90">
+                <ul className="list-disc pl-5">
+                  <li>Severe confusion, hard to wake, or sudden behavior changes</li>
+                  <li>Vomiting blood or black/tarry stools</li>
+                  <li>Fever, chills, or signs of infection</li>
+                  <li>Worsening shortness of breath or chest pain</li>
+                  <li>Severe abdominal pain or rapidly increasing belly size</li>
+                  <li>No urine for many hours or very dark urine</li>
+                </ul>
+                <div className="mt-4 text-xs text-red-100/70">
+                  If any of the above occur, call your care team or emergency services right away.
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <GlobalFooter />
         </div>
       </div>
     </main>

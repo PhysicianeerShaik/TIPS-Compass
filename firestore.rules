@@ -1,21 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    match /patients/{patientId} {
-      allow read, write: if true;
-    }
-
-    match /checkins/{checkinId} {
-      allow read, write: if true;
-    }
-
-    match /riskStates/{patientId} {
-      allow read, write: if true;
-    }
-
-    match /appointments/{appointmentId} {
-      allow read, write: if true;
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }
