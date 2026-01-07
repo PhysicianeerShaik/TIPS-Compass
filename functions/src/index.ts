@@ -1,24 +1,23 @@
 import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-admin.initializeApp();
+initializeApp();
+const db = getFirestore();
 
 type RiskLevel = "green" | "yellow" | "red";
 
 type CheckIn = {
-  // accept either patientId or patientID coming from Firestore
-  patientId?: string;
-  patientID?: string;
-
-  date?: string; // YYYY-MM-DD
-  confusion?: boolean;
-  sleepReversal?: boolean;
-  tremor?: boolean;
-  bowelMovements?: number;
-  weightKg?: number | null;
-  bleeding?: boolean;
-  fever?: boolean;
-  medsTaken?: { lactulose?: boolean; rifaximin?: boolean; diuretics?: boolean };
+  patientId: string;
+  date: string; // YYYY-MM-DD
+  confusion: boolean;
+  sleepReversal: boolean;
+  tremor: boolean;
+  bowelMovements: number;
+  weightKg: number | null;
+  bleeding: boolean;
+  fever: boolean;
+  medsTaken: { lactulose: boolean; rifaximin: boolean; diuretics: boolean };
 };
 
 function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
@@ -27,7 +26,6 @@ function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
 }
 
 async function getRecentWeights(patientId: string, upToDate: string) {
-  const db = admin.firestore();
   const snap = await db
     .collection("checkins")
     .where("patientId", "==", patientId)
@@ -43,20 +41,7 @@ async function getRecentWeights(patientId: string, upToDate: string) {
 }
 
 function evaluateRisk(
-  checkIn: Required<
-    Pick<
-      CheckIn,
-      | "date"
-      | "confusion"
-      | "sleepReversal"
-      | "tremor"
-      | "bowelMovements"
-      | "weightKg"
-      | "bleeding"
-      | "fever"
-      | "medsTaken"
-    >
-  >,
+  checkIn: CheckIn,
   weightHistory: { date: string; weightKg: number }[]
 ) {
   let level: RiskLevel = "green";
@@ -93,9 +78,7 @@ function evaluateRisk(
     }
   }
 
-  if (reasons.length === 0) {
-    reasons.push("No concerning signals detected");
-  }
+  if (reasons.length === 0) reasons.push("No concerning signals detected");
 
   return { level, reasons };
 }
@@ -105,42 +88,19 @@ export const onCheckInWrite = functions.firestore
   .onWrite(async (change) => {
     if (!change.after.exists) return;
 
-    const raw = (change.after.data() || {}) as CheckIn;
+    const checkIn = change.after.data() as CheckIn;
+    if (!checkIn.patientId || !checkIn.date) return;
 
-    // normalize patientId field (supports patientID)
-    const patientId = raw.patientId ?? raw.patientID;
-    const date = raw.date;
+    const weightHistory = await getRecentWeights(checkIn.patientId, checkIn.date);
+    const { level, reasons } = evaluateRisk(checkIn, weightHistory);
 
-    if (!patientId || !date) return;
-
-    // normalize booleans/numbers so evaluateRisk never sees undefined
-    const checkInNormalized = {
-      date,
-      confusion: !!raw.confusion,
-      sleepReversal: !!raw.sleepReversal,
-      tremor: !!raw.tremor,
-      bowelMovements:
-        typeof raw.bowelMovements === "number" ? raw.bowelMovements : 0,
-      weightKg: typeof raw.weightKg === "number" ? raw.weightKg : null,
-      bleeding: !!raw.bleeding,
-      fever: !!raw.fever,
-      medsTaken: {
-        lactulose: !!raw.medsTaken?.lactulose,
-        rifaximin: !!raw.medsTaken?.rifaximin,
-        diuretics: !!raw.medsTaken?.diuretics,
-      },
-    };
-
-    const weightHistory = await getRecentWeights(patientId, date);
-    const { level, reasons } = evaluateRisk(checkInNormalized, weightHistory);
-
-    await admin.firestore().collection("riskStates").doc(patientId).set(
+    await db.collection("riskStates").doc(checkIn.patientId).set(
       {
-        patientId,
+        patientId: checkIn.patientId,
         level,
         reasons,
-        lastCheckInDate: date,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastCheckInDate: checkIn.date,
+        updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
