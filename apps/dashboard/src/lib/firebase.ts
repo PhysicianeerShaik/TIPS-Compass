@@ -86,7 +86,6 @@ export function getDb(): Firestore {
     if (useEmulator) {
       globalThis.__FIRESTORE__ = initializeFirestore(app, {
         experimentalForceLongPolling: true,
-        useFetchStreams: false,
       });
     } else {
       globalThis.__FIRESTORE__ = getFirestore(app);
