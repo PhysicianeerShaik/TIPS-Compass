@@ -5,7 +5,7 @@ import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestor
 import Link from "next/link";
 
 import { getAuthedDb } from "@/lib/firebase";
-import { clearDemoData, seedDemo } from "@/lib/demoSeed";
+import { generateMockFrontendData } from "@/lib/demoSeed";
 import { evaluateRisk, type CheckInInput } from "@/lib/risk";
 
 import type { RiskLevel, RiskState } from "@/lib/types";
@@ -60,14 +60,14 @@ function TrendChart({
         width="100%"
         height={height}
         viewBox={`0 0 ${width} ${height}`}
-        className="text-white/80"
+        className="text-slate-400"
         preserveAspectRatio="none"
       >
-        <polyline fill="none" stroke="rgba(248,113,113,0.9)" strokeWidth="2.5" points={redPts} />
-        <polyline fill="none" stroke="rgba(251,191,36,0.9)" strokeWidth="2.5" points={yellowPts} />
-        <polyline fill="none" stroke="rgba(74,222,128,0.9)" strokeWidth="2.5" points={greenPts} />
+        <polyline fill="none" stroke="#f43f5e" strokeWidth="2.5" points={redPts} />
+        <polyline fill="none" stroke="#fbbf24" strokeWidth="2.5" points={yellowPts} />
+        <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={greenPts} />
       </svg>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-white/40">
+      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-medium">
         <span>{dates[0] ?? "—"}</span>
         <span>{dates[dates.length - 1] ?? "—"}</span>
       </div>
@@ -85,8 +85,26 @@ export default function Dashboard() {
   const [demoError, setDemoError] = useState<string | null>(null);
 
   useEffect(() => {
-    let unsubRisk = () => {};
-    let unsubCheckins = () => {};
+    if (demoEnabled) {
+      const { mockCheckins, mockRiskStates } = generateMockFrontendData();
+
+      const rows = [...mockRiskStates];
+      rows.sort((a, b) => {
+        const ra = levelRank(a.level);
+        const rb = levelRank(b.level);
+        if (ra !== rb) return ra - rb;
+        const dateA = a.lastCheckInDate ? new Date(a.lastCheckInDate).getTime() : 0;
+        const dateB = b.lastCheckInDate ? new Date(b.lastCheckInDate).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setItems(rows);
+      setCheckins(mockCheckins);
+      return;
+    }
+
+    let unsubRisk = () => { };
+    let unsubCheckins = () => { };
     let active = true;
 
     (async () => {
@@ -104,7 +122,9 @@ export default function Dashboard() {
             const ra = levelRank(a.level);
             const rb = levelRank(b.level);
             if (ra !== rb) return ra - rb;
-            return (b.lastCheckInDate ?? "").localeCompare(a.lastCheckInDate ?? "");
+            const dateA = a.lastCheckInDate ? new Date(a.lastCheckInDate).getTime() : 0;
+            const dateB = b.lastCheckInDate ? new Date(b.lastCheckInDate).getTime() : 0;
+            return dateB - dateA;
           });
 
           setItems(rows);
@@ -125,7 +145,7 @@ export default function Dashboard() {
       unsubRisk();
       unsubCheckins();
     };
-  }, []);
+  }, [demoEnabled]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -163,7 +183,7 @@ export default function Dashboard() {
     const dayCounts = new Map<string, { red: number; yellow: number; green: number }>();
 
     for (const [, list] of byPatient) {
-      const ordered = list.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const ordered = list.slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       let weightHistory: { date: string; weightKg: number }[] = [];
 
       for (const c of ordered) {
@@ -259,393 +279,200 @@ export default function Dashboard() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const toggleDemo = async () => {
-    if (demoBusy) return;
-    setDemoError(null);
-
+  const toggleDemo = () => {
     if (!demoEnabled) {
-      setDemoBusy(true);
-      try {
-        await seedDemo();
-        setDemoEnabled(true);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("tips_compass_demo_enabled", "true");
-        }
-      } catch (e: any) {
-        setDemoError(String(e?.message ?? e));
-      } finally {
-        setDemoBusy(false);
+      setDemoEnabled(true);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("tips_compass_demo_enabled", "true");
       }
-      return;
-    }
-
-    setDemoBusy(true);
-    try {
-      await clearDemoData();
+    } else {
       setDemoEnabled(false);
       if (typeof window !== "undefined") {
         window.localStorage.setItem("tips_compass_demo_enabled", "false");
       }
-    } catch (e: any) {
-      setDemoError(String(e?.message ?? e));
-    } finally {
-      setDemoBusy(false);
     }
   };
 
   return (
-    <main className="min-h-screen text-white">
-      <div className="mx-auto max-w-6xl px-6 py-12">
-        <div className="flex flex-col gap-6 stagger">
-          {/* Header */}
-          <header className="flex flex-col gap-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div className="text-xs uppercase tracking-[0.4em] text-white/50">
-                  TIPS Compass
-                </div>
-                <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                  Risk Command Center
-                </h1>
-                <p className="mt-2 max-w-2xl text-white/60">
-                  Live triage from patient check-ins → Firestore → riskStates. Detect drift,
-                  flag red-risk, and keep the care team in lockstep.
-                </p>
-              </div>
+    <main className="flex h-screen flex-col bg-gray-50 text-slate-900 overflow-hidden">
+      {/* Epic-style Top Navigation Header */}
+      <header className="flex shrink-0 items-center justify-between bg-slate-900 px-4 py-2 text-white">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2">
+            <div className="font-display font-bold text-lg tracking-tight">TIPS<span className="text-blue-400">Compass</span></div>
+          </div>
+          <nav className="hidden items-center gap-6 text-sm font-medium text-slate-400 md:flex">
+            <span className="text-white">Patient List</span>
+            <Link href="/checkin" className="transition hover:text-white">Device Check-In</Link>
+          </nav>
+        </div>
+        <div className="flex items-center gap-4 text-sm font-medium">
+          <span className="hidden sm:inline-block text-slate-300">Dr. TIPSCompass</span>
+          <button
+            type="button"
+            onClick={() => setShowToasts((v) => !v)}
+            className="flex items-center gap-2 rounded bg-slate-800 px-3 py-1.5 text-xs transition hover:bg-slate-700"
+          >
+            {showToasts ? "Hide Alerts" : "Show Alerts"}
+            {unreadCounts.red > 0 || unreadCounts.yellow > 0 ? (
+              <span className="flex items-center gap-1.5 ml-1">
+                {unreadCounts.red > 0 && <span className="h-2 w-2 rounded-full bg-rose-500" />}
+                {unreadCounts.yellow > 0 && <span className="h-2 w-2 rounded-full bg-amber-500" />}
+              </span>
+            ) : null}
+          </button>
+          <button
+            onClick={toggleDemo}
+            disabled={demoBusy}
+            className={`rounded bg-slate-800 px-3 py-1.5 text-xs transition hover:bg-slate-700 ${demoBusy ? "opacity-50" : ""}`}
+          >
+            {demoBusy ? "..." : demoEnabled ? "Demo: ON" : "Demo: OFF"}
+          </button>
+        </div>
+      </header>
 
-              <div className="flex flex-col items-end gap-2">
-                <button
-                  onClick={toggleDemo}
-                  disabled={demoBusy}
-                  className={`flex items-center gap-3 rounded-full border px-5 py-2.5 text-sm shadow-[0_12px_28px_rgba(5,10,25,0.4)] transition ${
-                    demoEnabled
-                      ? "border-emerald-300/40 bg-emerald-400/15 text-emerald-100"
-                      : "border-white/10 bg-white/10 text-white/90 hover:bg-white/15"
-                  } ${demoBusy ? "opacity-60" : ""}`}
-                >
-                  <span className="text-[11px] uppercase tracking-[0.25em]">
-                    Demo mode
-                  </span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      demoEnabled
-                        ? "bg-emerald-400/30 text-emerald-100"
-                        : "bg-white/15 text-white/70"
-                    }`}
-                  >
-                    {demoEnabled ? "On" : "Off"}
-                  </span>
-                  {demoBusy ? <span className="text-xs text-white/60">Seeding…</span> : null}
-                </button>
-
-                <Link
-                  className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_16px_32px_rgba(246,182,99,0.25)] hover:opacity-90"
-                  href="/checkin"
-                >
-                  Patient Check-In →
-                </Link>
-                {demoError ? (
-                  <div className="text-xs text-red-300">
-                    {demoError}
-                  </div>
-                ) : null}
-              </div>
+      {/* Clinical Ribbon / Department Snapshot */}
+      <div className="flex shrink-0 flex-col gap-4 border-b border-gray-200 bg-white p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
+          <div className="flex justify-between sm:block">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Department Census</div>
+            <div className="text-2xl font-bold text-slate-900">{items.length} <span className="text-sm font-normal text-slate-500">Total</span></div>
+          </div>
+          <div className="hidden sm:block h-10 w-px bg-gray-200" />
+          <div className="flex justify-between sm:justify-start gap-4 sm:gap-6">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-rose-600">Action Required</div>
+              <div className="text-xl font-bold text-rose-600">{counts.red}</div>
             </div>
-
-            <div className="glass-panel-strong relative overflow-hidden rounded-[32px] p-6 sm:p-8">
-              <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl" />
-              <div className="absolute -left-20 bottom-0 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl" />
-              <div className="relative grid gap-6 sm:grid-cols-[1.4fr_1fr]">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.3em] text-white/50">
-                    Live snapshot
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/70">
-                      Streaming
-                    </div>
-                    <div className="text-sm text-white/50">
-                      Last refresh: just now
-                    </div>
-                  </div>
-                  <div className="mt-5 font-display text-3xl font-semibold">
-                    {counts.red + counts.yellow + counts.green} active patients
-                  </div>
-                  <p className="mt-2 text-sm text-white/60">
-                    Keep an eye on spikes in red-risk and medication adherence trends.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                      Red risk
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold">{counts.red}</div>
-                    <div className="mt-1 text-xs text-white/40">Escalate within 24 hrs</div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                      Yellow risk
-                    </div>
-                    <div className="mt-3 text-3xl font-semibold">{counts.yellow}</div>
-                    <div className="mt-1 text-xs text-white/40">Prioritize outreach</div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 sm:col-span-2">
-                    <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                      Latest signals
-                    </div>
-                    <div className="mt-3 text-sm text-white/70">
-                      Confusion + 0 BMs • Bleeding • Fever spikes
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Watch List</div>
+              <div className="text-xl font-bold text-amber-600">{counts.yellow}</div>
             </div>
-          </header>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Stable</div>
+              <div className="text-xl font-bold text-emerald-600">{counts.green}</div>
+            </div>
+          </div>
+          <div className="hidden lg:block h-10 w-px bg-gray-200" />
+          <div className="hidden lg:block max-w-sm">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Triage AI Summary</div>
+            <div className="truncate text-sm font-medium text-slate-700">{summary.headline}</div>
+          </div>
+        </div>
 
-          {/* KPI cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <div className="text-sm text-white/50">Red</div>
-              <div className="mt-2 text-3xl font-semibold">{counts.red}</div>
-              <div className="mt-1 text-xs text-white/50">
-                Immediate attention
-              </div>
-            </Card>
-            <Card>
-              <div className="text-sm text-white/50">Yellow</div>
-              <div className="mt-2 text-3xl font-semibold">{counts.yellow}</div>
-              <div className="mt-1 text-xs text-white/50">Watch closely</div>
-            </Card>
-            <Card>
-              <div className="text-sm text-white/50">Green</div>
-              <div className="mt-2 text-3xl font-semibold">{counts.green}</div>
-              <div className="mt-1 text-xs text-white/50">Stable</div>
-            </Card>
+        <div className="flex flex-col sm:flex-row w-full lg:w-auto items-center gap-3 mt-2 lg:mt-0">
+          <div className="w-full sm:w-auto flex justify-center">
+            <Segmented<Filter>
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { label: "All", value: "all" },
+                { label: "Red", value: "red" },
+                { label: "Yellow", value: "yellow" },
+                { label: "Green", value: "green" },
+              ]}
+            />
+          </div>
+          <input
+            value={qText}
+            onChange={(e) => setQText(e.target.value)}
+            placeholder="Search MRN or Reason..."
+            className="w-full sm:w-64 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+
+      {/* Main Workspace */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Patient Data Grid */}
+        <div className="flex-1 overflow-x-hidden overflow-y-auto bg-white p-2 sm:p-4">
+          <div className="w-full rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wider text-gray-500 border-b border-gray-200 hidden sm:table-header-group">
+                <tr>
+                  <th className="px-3 sm:px-4 py-3">Patient MRN</th>
+                  <th className="px-3 sm:px-4 py-3">Triage Level</th>
+                  <th className="hidden md:table-cell px-4 py-3 w-1/3">Clinical Signals / Reasons</th>
+                  <th className="hidden lg:table-cell px-4 py-3">Last Check-In</th>
+                  <th className="px-3 sm:px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                      No patients found matching the criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((x) => (
+                    <tr key={x.patientId} className="group transition hover:bg-blue-50/50 flex flex-col sm:table-row border-b sm:border-b-0 border-gray-100 py-2 sm:py-0">
+                      <td className="px-3 sm:px-4 py-1 sm:py-3 font-medium text-slate-900 flex justify-between sm:table-cell">
+                        <span className="sm:hidden text-xs text-slate-500 uppercase font-semibold">MRN</span>
+                        {x.patientId}
+                      </td>
+                      <td className="px-3 sm:px-4 py-1 sm:py-3 flex justify-between sm:table-cell">
+                        <span className="sm:hidden text-xs text-slate-500 uppercase font-semibold">Triage</span>
+                        <RiskBadge level={x.level} />
+                      </td>
+                      <td className="hidden md:table-cell px-4 py-3 text-slate-600 truncate max-w-sm">
+                        {(x.reasons ?? []).join("; ") || "—"}
+                      </td>
+                      <td className="hidden lg:table-cell px-4 py-3 text-slate-500">
+                        {x.lastCheckInDate ?? "—"}
+                      </td>
+                      <td className="px-3 sm:px-4 py-1 mt-2 sm:mt-0 sm:py-3 text-right sm:table-cell">
+                        <Link
+                          href={`/p/${encodeURIComponent(x.patientId)}`}
+                          className="inline-block w-full sm:w-auto text-center rounded bg-blue-50 sm:bg-transparent px-3 py-2 sm:p-0 font-medium text-blue-600 hover:text-blue-800 sm:hover:underline"
+                        >
+                          Review →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs uppercase tracking-[0.3em] text-white/50">
-                  Risk trend
-                </div>
-                <div className="mt-2 text-lg font-semibold">Daily triage over time</div>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-white/50">
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-rose-400" />
-                  Red
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-amber-300" />
-                  Yellow
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                  Green
-                </span>
-              </div>
-            </div>
-            <div className="mt-4">
-              {trend.dates.length === 0 ? (
-                <div className="py-6 text-sm text-white/50">
-                  No trend data yet. Submit check-ins to populate the timeline.
-                </div>
-              ) : (
-                <TrendChart
-                  dates={trend.dates}
-                  red={trend.red}
-                  yellow={trend.yellow}
-                  green={trend.green}
-                />
-              )}
-            </div>
-            <div className="mt-3 text-xs text-white/40">
-              Based on all recorded check-ins across patients.
-            </div>
-          </Card>
-
-          {/* Next-gen insights */}
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_0.9fr]">
+          {/* Layout for auxiliary components like Trend chart */}
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.3em] text-white/50">
-                    Alert feed
-                  </div>
-                  <div className="mt-2 text-lg font-semibold">Escalations</div>
-                  <div className="mt-1 text-xs text-white/40">
-                    Live signals from Firestore subscriptions
-                  </div>
-                </div>
-                <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/70">
-                  Realtime
-                </div>
-              </div>
-
-              <div className="mt-4 divide-y divide-white/10">
-                {alerts.length === 0 ? (
-                  <div className="py-6 text-sm text-white/50">
-                    No urgent signals right now. Green patients are stable.
-                  </div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Risk Trend (Department-wide)</h3>
+              <div className="mt-4">
+                {trend.dates.length > 0 ? (
+                  <TrendChart dates={trend.dates} red={trend.red} yellow={trend.yellow} green={trend.green} />
                 ) : (
-                  alerts.map((a) => (
-                    <div key={a.id} className="flex items-start justify-between gap-4 py-4">
+                  <div className="text-sm text-slate-400">No trend data.</div>
+                )}
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">Recent Escalations</h3>
+                <span className="text-xs font-medium text-slate-400">Live feed</span>
+              </div>
+              <div className="mt-4 divide-y divide-gray-100">
+                {alerts.length === 0 ? (
+                  <div className="py-2 text-sm text-slate-500">No active escalations.</div>
+                ) : (
+                  alerts.slice(0, 4).map((a) => (
+                    <div key={a.id} className="flex justify-between gap-4 py-2">
                       <div>
-                        <div className="text-sm font-semibold">{a.title}</div>
-                        <div className="mt-1 text-xs text-white/50">
-                          {a.detail}
-                        </div>
+                        <div className="text-sm font-medium text-slate-900">{a.title}</div>
+                        <div className="text-xs text-slate-600">{a.detail}</div>
                       </div>
-                      <div className="text-right text-xs text-white/40">
-                        {a.lastCheckInDate ?? "—"}
-                      </div>
+                      <div className="text-xs text-slate-400 whitespace-nowrap">{a.lastCheckInDate}</div>
                     </div>
                   ))
                 )}
               </div>
             </Card>
-
-            <Card>
-              <div className="text-xs uppercase tracking-[0.3em] text-white/50">
-                Triage summary
-              </div>
-              <div className="mt-2 text-lg font-semibold">{summary.headline}</div>
-              <div className="mt-4 space-y-2 text-sm text-white/70">
-                {summary.bullets.map((b) => (
-                  <div key={b} className="flex gap-2">
-                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-white/50" />
-                    <span>{b}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/50">
-                AI-style insights are computed locally from incoming check-ins.
-              </div>
-            </Card>
-
-            <Card>
-              <div className="text-xs uppercase tracking-[0.3em] text-white/50">
-                Trend radar
-              </div>
-              <div className="mt-3 text-2xl font-semibold">
-                {totalCount === 0
-                  ? "—"
-                  : `${counts.red + counts.yellow}/${totalCount}`}
-                <span className="text-sm text-white/50"> at risk</span>
-              </div>
-              <div className="mt-4 grid gap-3">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                  <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                    Red today
-                  </div>
-                  <div className="mt-2 text-xl font-semibold">
-                    {items.filter((x) => x.level === "red" && x.lastCheckInDate === today).length}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                  <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                    Check-ins today
-                  </div>
-                  <div className="mt-2 text-xl font-semibold">
-                    {items.filter((x) => x.lastCheckInDate === today).length}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 text-xs text-white/50">
-                Momentum updates in realtime as new riskStates arrive.
-              </div>
-            </Card>
           </div>
-
-          {/* List */}
-          <Card>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
-                <Segmented<Filter>
-                  value={filter}
-                  onChange={setFilter}
-                  options={[
-                    { label: "All", value: "all" },
-                    { label: "Red", value: "red" },
-                    { label: "Yellow", value: "yellow" },
-                    { label: "Green", value: "green" },
-                  ]}
-                />
-
-                <input
-                  value={qText}
-                  onChange={(e) => setQText(e.target.value)}
-                  placeholder="Search patientId or reason…"
-                  className="w-full sm:w-[320px] rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 placeholder:text-white/30 outline-none focus:border-white/20"
-                />
-              </div>
-
-              <div className="text-xs text-white/40">
-                Live updates via Firestore subscriptions
-              </div>
-            </div>
-
-            <div className="mt-5 divide-y divide-white/10">
-              {filtered.length === 0 ? (
-                <div className="py-10 text-center text-white/50">
-                  No patients yet. Submit a check-in to generate riskStates.
-                </div>
-              ) : (
-                filtered.map((x) => (
-                  <Link
-                    key={x.patientId}
-                    href={`/p/${encodeURIComponent(x.patientId)}`}
-                    className="flex items-start justify-between gap-4 rounded-xl px-2 py-4 transition hover:bg-white/5"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-3">
-                        <div className="text-lg font-semibold tracking-tight">
-                          {x.patientId}
-                        </div>
-                        <RiskBadge level={x.level} />
-                      </div>
-
-                      <div className="mt-1 text-sm text-white/50">
-                        Last check-in:{" "}
-                        <span className="text-white/70">
-                          {x.lastCheckInDate ?? "—"}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 line-clamp-2 text-sm text-white/70">
-                        {(x.reasons ?? []).join(" • ")}
-                      </div>
-                    </div>
-
-                    <div className="text-sm text-white/40">View →</div>
-                  </Link>
-                ))
-              )}
-            </div>
-          </Card>
-
-          <GlobalFooter />
         </div>
       </div>
       <ToastStack toasts={showToasts ? toasts : []} onDismiss={dismissToast} />
-      <button
-        type="button"
-        onClick={() => setShowToasts((v) => !v)}
-        className="fixed right-4 top-4 z-50 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-[11px] uppercase tracking-[0.25em] text-white/70 shadow-[0_12px_28px_rgba(4,10,24,0.45)] hover:bg-white/15"
-      >
-        {showToasts ? "Hide alerts" : "Show alerts"}
-        <span className="inline-flex items-center gap-1 rounded-full border border-rose-300/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-100">
-          R {redTotal}
-          <span className="text-rose-100/70">/{unreadCounts.red}</span>
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
-          Y {yellowTotal}
-          <span className="text-amber-100/70">/{unreadCounts.yellow}</span>
-        </span>
-      </button>
     </main>
   );
 }

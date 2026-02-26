@@ -6,13 +6,13 @@ import { getAuthedDb } from "@/lib/firebase";
 import { Card } from "@/components/Card";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { clearDraft, loadDraft, saveDraft } from "@/lib/localDraft";
-import { nowLocalTimeString, todayYYYYMMDD } from "@/lib/format";
+import { nowLocalTimeString, todayMMDDYYYY } from "@/lib/format";
 import { upsertRiskStateFromCheckin } from "@/lib/risk";
 import { GlobalFooter } from "@/components/GlobalFooter";
 
 type CheckIn = {
   patientId: string;
-  date: string; // YYYY-MM-DD
+  date: string; // MM-DD-YYYY
   confusion: boolean;
   sleepReversal: boolean;
   tremor: boolean;
@@ -48,27 +48,27 @@ function Toggle({
       type="button"
       onClick={() => onChange(!value)}
       className={cx(
-        "w-full rounded-2xl border px-4 py-4 text-left transition focus:outline-none focus:ring-2 focus:ring-white/20",
-        value ? "border-white/25 bg-white/10" : "border-white/10 bg-white/5 hover:bg-white/10",
-        sev === "danger" && value && "border-red-300/40 bg-red-500/10",
-        sev === "warning" && value && "border-yellow-300/40 bg-yellow-500/10"
+        "w-full rounded border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm",
+        value ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50",
+        sev === "danger" && value && "border-red-300 bg-red-50",
+        sev === "warning" && value && "border-amber-300 bg-amber-50"
       )}
       aria-pressed={value}
     >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-white">{label}</div>
-          {hint ? <div className="mt-1 text-xs text-white/50">{hint}</div> : null}
+          <div className={cx("text-sm font-medium", value ? "text-blue-900" : "text-slate-700")}>{label}</div>
+          {hint ? <div className={cx("mt-0.5 text-xs", value ? "text-blue-700" : "text-slate-500")}>{hint}</div> : null}
         </div>
 
         <div
           className={cx(
-            "h-6 w-11 rounded-full border p-1 transition",
-            value ? "border-white/30 bg-white/20" : "border-white/10 bg-white/5"
+            "h-5 w-9 rounded-full border p-0.5 transition-colors duration-200 ease-in-out",
+            value ? "border-transparent bg-blue-600" : "border-gray-300 bg-gray-200"
           )}
           aria-hidden="true"
         >
-          <div className={cx("h-4 w-4 rounded-full bg-white transition", value ? "translate-x-5" : "translate-x-0")} />
+          <div className={cx("h-3.5 w-3.5 rounded-full bg-white transition duration-200 ease-in-out", value ? "translate-x-4 shadow" : "translate-x-0 shadow-sm")} />
         </div>
       </div>
     </button>
@@ -86,17 +86,17 @@ function Banner({
 }) {
   const styles =
     kind === "danger"
-      ? "border-red-300/30 bg-red-500/10"
+      ? "border-red-200 bg-red-50 text-red-900"
       : kind === "warning"
-      ? "border-yellow-300/30 bg-yellow-500/10"
-      : kind === "success"
-      ? "border-emerald-300/30 bg-emerald-500/10"
-      : "border-white/10 bg-white/5";
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : kind === "success"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+          : "border-blue-200 bg-blue-50 text-blue-900";
 
   return (
-    <div className={cx("rounded-2xl border px-4 py-3", styles)}>
-      <div className="text-sm font-medium">{title}</div>
-      {body ? <div className="mt-1 text-xs text-white/70">{body}</div> : null}
+    <div className={cx("rounded border px-4 py-3 shadow-sm", styles)}>
+      <div className="text-sm font-semibold">{title}</div>
+      {body ? <div className="mt-1 text-xs opacity-80">{body}</div> : null}
     </div>
   );
 }
@@ -117,15 +117,15 @@ function Stepper({ step }: { step: Step }) {
           <div key={it.k} className="flex items-center gap-2">
             <div
               className={cx(
-                "h-7 w-7 rounded-full border text-xs flex items-center justify-center",
-                done ? "border-white/25 bg-white/20" : active ? "border-white/30 bg-white/10" : "border-white/10 bg-white/5"
+                "h-6 w-6 rounded-full border text-xs flex items-center justify-center font-medium",
+                done ? "border-blue-600 bg-blue-600 text-white" : active ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-200 bg-gray-50 text-gray-400"
               )}
               aria-hidden="true"
             >
               {idx + 1}
             </div>
-            <div className={cx("text-xs", active ? "text-white" : "text-white/50")}>{it.label}</div>
-            {idx !== items.length - 1 ? <div className="h-px w-6 bg-white/10" aria-hidden="true" /> : null}
+            <div className={cx("text-xs font-semibold uppercase tracking-wider", active ? "text-slate-900" : "text-slate-400")}>{it.label}</div>
+            {idx !== items.length - 1 ? <div className="h-px w-4 bg-gray-200" aria-hidden="true" /> : null}
           </div>
         );
       })}
@@ -136,7 +136,7 @@ function Stepper({ step }: { step: Step }) {
 function validate(form: CheckIn) {
   const errors: Record<string, string> = {};
   if (!form.patientId.trim()) errors.patientId = "Patient ID is required.";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) errors.date = "Use YYYY-MM-DD.";
+  if (!/^\d{2}-\d{2}-\d{4}$/.test(form.date)) errors.date = "Use MM-DD-YYYY.";
   if (form.bowelMovements < 0) errors.bowelMovements = "Must be 0 or more.";
   if (form.weightKg !== null && form.weightKg < 0) errors.weightKg = "Must be 0 or more.";
   return errors;
@@ -150,7 +150,7 @@ export default function CheckInPage() {
 
   const [form, setForm] = useState<CheckIn>({
     patientId: "patient_001",
-    date: todayYYYYMMDD(),
+    date: todayMMDDYYYY(),
     confusion: false,
     sleepReversal: false,
     tremor: false,
@@ -254,63 +254,54 @@ export default function CheckInPage() {
   }
 
   return (
-    <main className="min-h-screen text-white">
-      <div className="mx-auto max-w-3xl px-6 py-12">
-        <header className="flex flex-col gap-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-[0.4em] text-white/50">
-                TIPS Compass
-              </div>
-              <h1 className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
-                Daily Check-In
-              </h1>
-              <p className="mt-2 text-white/60">
-                Quick questions that help your care team triage early.
-              </p>
-            </div>
+    <main className="min-h-screen bg-gray-50 text-slate-900 pb-20">
+      {/* Epic-style Top Navigation Header */}
+      <header className="flex shrink-0 items-center justify-between bg-slate-900 px-4 py-2 text-white">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2">
+            <div className="font-display font-bold text-lg tracking-tight">TIPS<span className="text-blue-400">Compass</span></div>
+          </div>
+          <nav className="hidden items-center gap-6 text-sm font-medium text-slate-400 md:flex">
+            <Link href="/" className="transition hover:text-white">Patient List</Link>
+            <span className="text-white">Device Check-In</span>
+          </nav>
+        </div>
+      </header>
 
-            <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="rounded-full border border-white/10 bg-white/10 px-5 py-2.5 text-sm text-white/80 hover:bg-white/15"
-              >
-                Dashboard →
-              </Link>
-            </div>
+      <div className="mx-auto max-w-3xl px-6 py-8">
+        <header className="flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h1 className="text-2xl font-bold text-slate-900 leading-tight">
+              Patient Flowsheet Entry
+            </h1>
+            <Link
+              href="/"
+              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            >
+              Exit to Patient List
+            </Link>
           </div>
 
-          <div className="glass-panel-strong relative overflow-hidden rounded-[32px] p-6 sm:p-8">
-            <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl" />
-            <div className="absolute -left-20 bottom-0 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl" />
-            <div className="relative grid gap-6 sm:grid-cols-[1.2fr_1fr]">
+          <div className="rounded border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="grid gap-6 sm:grid-cols-[1.2fr_1fr]">
               <div>
-                <div className="text-xs uppercase tracking-[0.3em] text-white/50">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   Step {step + 1} of 3
                 </div>
-                <div className="mt-4">
+                <div className="mt-2">
                   <Stepper step={step} />
                 </div>
-                <div className="mt-5 text-sm text-white/60">
-                  Your responses help flag early warning signals for encephalopathy,
-                  bleeding, and infection risks.
+                <div className="mt-4 text-xs text-slate-600 max-w-sm">
+                  Patient responses help flag early warning signals for encephalopathy, bleeding, and infection.
                 </div>
               </div>
-              <div className="grid gap-3">
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                    Estimated time
+              <div className="flex flex-col gap-3">
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Est. Time
                   </div>
-                  <div className="mt-3 text-3xl font-semibold">2 min</div>
-                  <div className="mt-1 text-xs text-white/40">Draft auto-saves</div>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="text-xs uppercase tracking-[0.2em] text-white/50">
-                    Safety note
-                  </div>
-                  <div className="mt-3 text-sm text-white/70">
-                    Severe symptoms? Call emergency services immediately.
-                  </div>
+                  <div className="mt-1 text-xl font-bold text-slate-900">2 min</div>
+                  <div className="mt-1 text-xs text-slate-500">Draft auto-saves</div>
                 </div>
               </div>
             </div>
@@ -335,38 +326,38 @@ export default function CheckInPage() {
           <Card>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="text-xs text-white/50">Patient ID</label>
+                <label className="text-xs font-semibold text-slate-700">Patient ID</label>
                 <input
                   value={form.patientId}
                   onChange={(e) => set("patientId", e.target.value)}
                   placeholder="patient_001"
                   className={cx(
-                    "mt-2 w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm text-white/90 outline-none focus:border-white/20",
-                    errors.patientId ? "border-red-300/40" : "border-white/10"
+                    "mt-1.5 w-full rounded border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition",
+                    errors.patientId ? "border-red-300" : "border-gray-300"
                   )}
                 />
                 {errors.patientId ? (
-                  <div className="mt-2 text-xs text-red-300">{errors.patientId}</div>
+                  <div className="mt-1.5 text-xs text-red-600 font-medium">{errors.patientId}</div>
                 ) : (
-                  <div className="mt-2 text-xs text-white/40">Example: patient_001</div>
+                  <div className="mt-1.5 text-xs text-slate-500">Example: patient_001</div>
                 )}
               </div>
 
               <div>
-                <label className="text-xs text-white/50">Date</label>
+                <label className="text-xs font-semibold text-slate-700">Date</label>
                 <input
                   value={form.date}
                   onChange={(e) => set("date", e.target.value)}
                   className={cx(
-                    "mt-2 w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm text-white/90 outline-none focus:border-white/20",
-                    errors.date ? "border-red-300/40" : "border-white/10"
+                    "mt-1.5 w-full rounded border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition",
+                    errors.date ? "border-red-300" : "border-gray-300"
                   )}
                 />
                 {errors.date ? (
-                  <div className="mt-2 text-xs text-red-300">{errors.date}</div>
+                  <div className="mt-1.5 text-xs text-red-600 font-medium">{errors.date}</div>
                 ) : (
-                  <div className="mt-2 text-xs text-white/40">
-                    Writing to <span className="text-white/70">checkins/{checkinId}</span>
+                  <div className="mt-1.5 text-xs text-slate-500">
+                    Writing to <span className="font-medium text-slate-700">checkins/{checkinId}</span>
                   </div>
                 )}
               </div>
@@ -376,8 +367,8 @@ export default function CheckInPage() {
           {/* STEP 0 */}
           {step === 0 ? (
             <Card>
-              <div className="text-sm font-medium">Neuro + symptoms</div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="text-sm font-bold text-slate-900 border-b border-gray-100 pb-2 mb-4">Neuro + Symptoms</div>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <Toggle
                   label="Confusion"
                   hint="Trouble thinking clearly, disoriented, or unusually forgetful"
@@ -416,9 +407,9 @@ export default function CheckInPage() {
               </div>
 
               {redFlags.length > 0 ? (
-                <div className="mt-4 rounded-2xl border border-red-300/30 bg-red-500/10 p-4">
-                  <div className="text-sm font-medium">Red flags</div>
-                  <ul className="mt-2 list-disc pl-5 text-sm text-white/80">
+                <div className="mt-4 rounded border border-red-200 bg-red-50 p-4 shadow-sm">
+                  <div className="text-sm font-bold text-red-900">Red flags</div>
+                  <ul className="mt-2 list-disc pl-5 text-sm text-red-800">
                     {redFlags.map((f, i) => (
                       <li key={i}>{f}</li>
                     ))}
@@ -431,31 +422,31 @@ export default function CheckInPage() {
           {/* STEP 1 */}
           {step === 1 ? (
             <Card>
-              <div className="text-sm font-medium">Bowel movements + weight</div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="text-sm font-bold text-slate-900 border-b border-gray-100 pb-2 mb-4">Bowel Movements + Weight</div>
+              <div className="mt-2 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-xs text-white/50">Bowel movements today</label>
+                  <label className="text-xs font-semibold text-slate-700">Bowel movements today</label>
                   <input
                     type="number"
                     min={0}
                     value={form.bowelMovements}
                     onChange={(e) => set("bowelMovements", Number(e.target.value))}
                     className={cx(
-                      "mt-2 w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm text-white/90 outline-none focus:border-white/20",
-                      errors.bowelMovements ? "border-red-300/40" : "border-white/10"
+                      "mt-1.5 w-full rounded border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition",
+                      errors.bowelMovements ? "border-red-300" : "border-gray-300"
                     )}
                   />
                   {errors.bowelMovements ? (
-                    <div className="mt-2 text-xs text-red-300">{errors.bowelMovements}</div>
+                    <div className="mt-1.5 text-xs text-red-600 font-medium">{errors.bowelMovements}</div>
                   ) : (
-                    <div className="mt-2 text-xs text-white/40">
+                    <div className="mt-1.5 text-xs text-slate-500">
                       Low counts + neuro symptoms can indicate HE risk.
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-xs text-white/50">Weight (kg) optional</label>
+                  <label className="text-xs font-semibold text-slate-700">Weight (kg) optional</label>
                   <input
                     type="number"
                     min={0}
@@ -466,14 +457,14 @@ export default function CheckInPage() {
                     }
                     placeholder="e.g., 78.4"
                     className={cx(
-                      "mt-2 w-full rounded-2xl border bg-white/5 px-4 py-3 text-sm text-white/90 outline-none focus:border-white/20",
-                      errors.weightKg ? "border-red-300/40" : "border-white/10"
+                      "mt-1.5 w-full rounded border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition",
+                      errors.weightKg ? "border-red-300" : "border-gray-300"
                     )}
                   />
                   {errors.weightKg ? (
-                    <div className="mt-2 text-xs text-red-300">{errors.weightKg}</div>
+                    <div className="mt-1.5 text-xs text-red-600 font-medium">{errors.weightKg}</div>
                   ) : (
-                    <div className="mt-2 text-xs text-white/40">
+                    <div className="mt-1.5 text-xs text-slate-500">
                       Helps flag fluid overload trends.
                     </div>
                   )}
@@ -485,8 +476,8 @@ export default function CheckInPage() {
           {/* STEP 2 */}
           {step === 2 ? (
             <Card>
-              <div className="text-sm font-medium">Medications</div>
-              <div className="mt-2 text-xs text-white/50">
+              <div className="text-sm font-bold text-slate-900 border-b border-gray-100 pb-2 mb-4">Medications</div>
+              <div className="mt-2 text-xs text-slate-600">
                 Mark what you took today. If you missed doses, your team may adjust the plan.
               </div>
 
@@ -523,19 +514,23 @@ export default function CheckInPage() {
                 />
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="text-xs text-white/50">Review</div>
-                <div className="mt-2 text-sm text-white/80">
-                  <div>Patient: <span className="text-white">{form.patientId}</span></div>
-                  <div>Date: <span className="text-white">{form.date}</span></div>
-                  <div className="mt-2 text-white/70">
-                    Confusion: {String(form.confusion)} • Sleep reversal: {String(form.sleepReversal)} • Tremor: {String(form.tremor)}
+              <div className="mt-6 rounded border border-gray-200 bg-gray-50 p-4">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Review</div>
+                <div className="mt-3 text-sm text-slate-700">
+                  <div className="grid grid-cols-[100px_1fr] gap-1">
+                    <span className="font-semibold text-slate-900">Patient:</span> <span>{form.patientId}</span>
+                    <span className="font-semibold text-slate-900">Date:</span> <span>{form.date}</span>
                   </div>
-                  <div className="text-white/70">
-                    BMs: {form.bowelMovements} • Weight: {form.weightKg ?? "—"} kg
-                  </div>
-                  <div className="text-white/70">
-                    Bleeding: {String(form.bleeding)} • Fever: {String(form.fever)}
+                  <div className="mt-3 grid gap-1 border-t border-gray-200 pt-3">
+                    <div>
+                      <span className="font-semibold text-slate-900">Neuro:</span> Confusion: {String(form.confusion)} • Sleep reversal: {String(form.sleepReversal)} • Tremor: {String(form.tremor)}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-900">Vitals:</span> BMs: {form.bowelMovements} • Weight: {form.weightKg ?? "—"} kg
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-900">Other:</span> Bleeding: {String(form.bleeding)} • Fever: {String(form.fever)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -543,17 +538,17 @@ export default function CheckInPage() {
           ) : null}
 
           {/* Footer actions */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-gray-200 pt-6 mt-2">
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={back}
                 disabled={step === 0}
                 className={cx(
-                  "rounded-full border px-5 py-3 text-sm transition",
+                  "rounded border px-5 py-2.5 text-sm font-medium transition shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20",
                   step === 0
-                    ? "border-white/10 bg-white/5 text-white/30"
-                    : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
+                    ? "border-gray-200 bg-gray-50 text-gray-400"
+                    : "border-gray-300 bg-white text-slate-700 hover:bg-gray-50"
                 )}
               >
                 Back
@@ -563,7 +558,7 @@ export default function CheckInPage() {
                 <button
                   type="button"
                   onClick={next}
-                  className="rounded-full bg-white px-6 py-3 text-sm font-medium text-black hover:opacity-90"
+                  className="rounded bg-slate-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-slate-800 transition focus:outline-none focus:ring-2 focus:ring-slate-900/20"
                 >
                   Next
                 </button>
@@ -573,10 +568,10 @@ export default function CheckInPage() {
                   onClick={submit}
                   disabled={!canSubmit || status?.state === "saving"}
                   className={cx(
-                    "rounded-full px-6 py-3 text-sm font-medium transition",
+                    "rounded px-6 py-2.5 text-sm font-medium shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500/20",
                     !canSubmit || status?.state === "saving"
-                      ? "bg-white/10 text-white/40"
-                      : "bg-white text-black hover:opacity-90"
+                      ? "bg-gray-200 text-gray-500"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
                   )}
                 >
                   {status?.state === "saving" ? "Submitting…" : "Submit check-in"}
@@ -584,31 +579,31 @@ export default function CheckInPage() {
               )}
             </div>
 
-            <div className="text-xs text-white/60">
+            <div className="text-xs font-medium text-slate-500">
               {status?.state === "idle" ? (
                 <>Draft saved automatically</>
               ) : status?.state === "saved" ? (
-                <span className="text-emerald-300">{status.msg}</span>
+                <span className="text-emerald-600">{status.msg}</span>
               ) : status?.state === "error" ? (
-                <span className="text-red-300">{status.msg}</span>
+                <span className="text-red-600">{status.msg}</span>
               ) : (
-                <span className="text-white/60">Submitting…</span>
+                <span className="text-slate-500">Submitting…</span>
               )}
             </div>
           </div>
 
-          <div className="pt-2 text-xs text-white/30">
+          <div className="pt-2 text-xs font-semibold text-rose-600/80">
             If you have severe symptoms (heavy bleeding, fainting, severe confusion), call emergency services.
           </div>
 
-          <div className="mt-10 rounded-[28px] border border-red-300/30 bg-red-500/10 p-6">
+          <div className="mt-8 rounded border border-rose-200 bg-rose-50 p-5 shadow-sm">
             <details className="group">
-              <summary className="flex cursor-pointer items-center justify-between text-sm font-semibold text-red-200">
+              <summary className="flex cursor-pointer items-center justify-between text-sm font-bold text-rose-900 outline-none focus:ring-2 focus:ring-rose-500/20 p-1 rounded">
                 <span>Urgent TIPS warning signs — seek immediate care</span>
-                <span className="text-red-200/70 transition group-open:rotate-180">▼</span>
+                <span className="text-rose-700 transition group-open:rotate-180">▼</span>
               </summary>
-              <div className="mt-4 text-sm text-red-100/90">
-                <ul className="list-disc pl-5">
+              <div className="mt-4 text-sm font-medium text-rose-800">
+                <ul className="list-disc pl-5 space-y-1">
                   <li>Severe confusion, hard to wake, or sudden behavior changes</li>
                   <li>Vomiting blood or black/tarry stools</li>
                   <li>Fever, chills, or signs of infection</li>
@@ -616,7 +611,7 @@ export default function CheckInPage() {
                   <li>Severe abdominal pain or rapidly increasing belly size</li>
                   <li>No urine for many hours or very dark urine</li>
                 </ul>
-                <div className="mt-4 text-xs text-red-100/70">
+                <div className="mt-4 text-xs font-semibold text-rose-700">
                   If any of the above occur, call your care team or emergency services right away.
                 </div>
               </div>

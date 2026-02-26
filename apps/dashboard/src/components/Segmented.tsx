@@ -8,7 +8,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1 shadow-[0_8px_24px_rgba(4,8,18,0.35)]">
+    <div className="inline-flex rounded border border-gray-200 bg-gray-100 p-0.5 shadow-inner">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -16,10 +16,10 @@ export function Segmented<T extends string>({
             key={o.value}
             onClick={() => onChange(o.value)}
             className={[
-              "rounded-full px-3.5 py-1.5 text-sm transition",
+              "rounded px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500/20",
               active
-                ? "bg-white/15 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.15)]"
-                : "text-white/60 hover:text-white",
+                ? "bg-white text-blue-700 shadow-sm border border-gray-200"
+                : "text-slate-500 hover:text-slate-700 hover:bg-gray-200/50 border border-transparent",
             ].join(" ")}
           >
             {o.label}

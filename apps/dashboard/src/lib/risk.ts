@@ -32,19 +32,19 @@ function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
 }
 
 async function getRecentWeights(db: Firestore, patientId: string, upToDate: string) {
+  // Fetch all for patient and sort in memory to avoid needing a Composite Index
   const snap = await getDocs(
     query(
       collection(db, "checkins"),
-      where("patientId", "==", patientId),
-      where("date", "<=", upToDate),
-      orderBy("date", "desc"),
-      limit(4)
+      where("patientId", "==", patientId)
     )
   );
 
   return snap.docs
     .map((d) => d.data() as any)
-    .filter((x) => typeof x.weightKg === "number")
+    .filter((x) => typeof x.weightKg === "number" && new Date(x.date).getTime() <= new Date(upToDate).getTime())
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 4)
     .map((x) => ({ date: x.date as string, weightKg: x.weightKg as number }));
 }
 

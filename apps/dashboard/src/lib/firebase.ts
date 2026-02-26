@@ -40,9 +40,7 @@ function getAppInstance() {
 }
 
 export function getDb(): Firestore {
-  const useEmulator =
-    process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "true" ||
-    process.env.NODE_ENV === "development";
+  const useEmulator = process.env.NEXT_PUBLIC_FIREBASE_EMULATOR === "true";
 
   const app = getAppInstance();
 

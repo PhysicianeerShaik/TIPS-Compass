@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #070b14;
-  --foreground: #e8f0ff;
-  --muted: #98a7c5;
-  --panel: rgba(12, 18, 32, 0.78);
-  --panel-strong: rgba(18, 26, 45, 0.9);
-  --panel-border: rgba(255, 255, 255, 0.08);
-  --accent: #f6b663;
-  --accent-2: #5ad1c8;
-  --glow: rgba(63, 196, 205, 0.2);
+  --background: #f3f4f6;
+  --foreground: #111827;
+  --muted: #6b7280;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --panel-border: #e5e7eb;
+  --accent: #2563eb;
+  --accent-2: #059669;
+  --glow: rgba(37, 99, 235, 0.1);
 }
 
 @theme inline {
@@ -22,11 +22,6 @@
 
 body {
   background-color: var(--background);
-  background-image:
-    radial-gradient(1200px 600px at 10% -10%, rgba(90, 209, 200, 0.18), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(246, 182, 99, 0.15), transparent 60%),
-    radial-gradient(700px 400px at 50% 100%, rgba(66, 132, 224, 0.15), transparent 65%),
-    linear-gradient(180deg, rgba(7, 11, 20, 0.95), rgba(7, 11, 20, 0.98));
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
   min-height: 100%;
@@ -40,15 +35,13 @@ body {
 .glass-panel {
   background: var(--panel);
   border: 1px solid var(--panel-border);
-  box-shadow: 0 24px 60px rgba(3, 8, 20, 0.6);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .glass-panel-strong {
   background: var(--panel-strong);
   border: 1px solid var(--panel-border);
-  box-shadow: 0 28px 70px rgba(3, 8, 20, 0.7);
-  backdrop-filter: blur(22px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .text-muted {
@@ -56,7 +49,7 @@ body {
 }
 
 .accent-glow {
-  box-shadow: 0 0 0 1px rgba(90, 209, 200, 0.18), 0 16px 40px var(--glow);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.18), 0 4px 12px var(--glow);
 }
 
 @keyframes fade-up {
@@ -64,6 +57,7 @@ body {
     opacity: 0;
     transform: translateY(16px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -74,9 +68,11 @@ body {
   0% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-6px);
   }
+
   100% {
     transform: translateY(0);
   }
@@ -90,26 +86,26 @@ body {
   animation: drift 6s ease-in-out infinite;
 }
 
-.stagger > * {
+.stagger>* {
   animation: fade-up 700ms ease both;
 }
 
-.stagger > *:nth-child(1) {
+.stagger>*:nth-child(1) {
   animation-delay: 60ms;
 }
 
-.stagger > *:nth-child(2) {
+.stagger>*:nth-child(2) {
   animation-delay: 120ms;
 }
 
-.stagger > *:nth-child(3) {
+.stagger>*:nth-child(3) {
   animation-delay: 180ms;
 }
 
-.stagger > *:nth-child(4) {
+.stagger>*:nth-child(4) {
   animation-delay: 240ms;
 }
 
-.stagger > *:nth-child(5) {
+.stagger>*:nth-child(5) {
   animation-delay: 300ms;
 }

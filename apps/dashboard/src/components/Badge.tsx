@@ -1,16 +1,16 @@
 import { RiskLevel } from "@/lib/types";
 
 const styles: Record<RiskLevel, string> = {
-  green: "bg-emerald-400/15 text-emerald-100 border-emerald-300/30 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]",
-  yellow: "bg-amber-400/15 text-amber-100 border-amber-300/30 shadow-[0_0_0_1px_rgba(251,191,36,0.15)]",
-  red: "bg-rose-400/15 text-rose-100 border-rose-300/30 shadow-[0_0_0_1px_rgba(251,113,133,0.15)]",
+  green: "bg-emerald-50 text-emerald-700 border-emerald-200 font-medium",
+  yellow: "bg-amber-50 text-amber-800 border-amber-300 font-medium",
+  red: "bg-rose-50 text-rose-800 border-rose-300 font-bold",
 };
 
 export function RiskBadge({ level }: { level: RiskLevel }) {
   return (
-    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${styles[level]}`}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-      {level.toUpperCase()}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs capitalize ${styles[level]}`}>
+      <span className={`mr-1.5 h-2 w-2 rounded-full ${level === 'red' ? 'bg-rose-500' : level === 'yellow' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+      {level}
     </span>
   );
 }
